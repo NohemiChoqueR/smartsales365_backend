@@ -87,11 +87,11 @@ class Command(BaseCommand):
                         empresa=empresa
                     )
                 elif role_name == "CUSTOMER":
-                    # CUSTOMER: permisos mínimos
+                    # CUSTOMER: permisos completos en Cart y CartItem
                     can_view = module_name in ["Producto", "DetalleProducto", "Cart", "CartItem"]
-                    can_create = False
-                    can_update = False
-                    can_delete = False
+                    can_create = module_name in ["Cart", "CartItem"]
+                    can_update = module_name in ["Cart", "CartItem"]
+                    can_delete = module_name in ["Cart", "CartItem"]
 
                     Permission.objects.create(
                         can_view=can_view,
@@ -121,7 +121,8 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Usuario ADMIN creado exitosamente."))
         else:
             self.stdout.write(self.style.WARNING("El usuario ADMIN ya existe."))
-                # Verificar si el usuario CLIENTE ya existe antes de crearlo
+        
+        # Verificar si el usuario CLIENTE ya existe antes de crearlo
         if not User.objects.filter(email="cliente1@gmail.com").exists():
             # Crear un usuario CUSTOMER (ejemplo)
             customer_role = roles["CUSTOMER"]  # Obtén el rol CUSTOMER creado anteriormente
@@ -137,20 +138,5 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Usuario CLIENTE creado exitosamente."))
         else:
             self.stdout.write(self.style.WARNING("El usuario CLIENTE ya existe."))
-
-        # Puedes agregar más usuarios de ejemplo si lo deseas
-        # Ejemplo:
-        # if not User.objects.filter(email="sales_agent@empresa.com").exists():
-        #     sales_agent_role = roles["SALES_AGENT"]
-        #     user = User.objects.create_user(
-        #         email="sales_agent@empresa.com",
-        #         password="salesagent123",
-        #         nombre="Sales",
-        #         apellido="Agent",
-        #         role=sales_agent_role,
-        #         empresa=empresa,
-        #         telefono="9876543210"
-        #     )
-        #     self.stdout.write(self.style.SUCCESS("Usuario SALES_AGENT creado exitosamente."))
 
         self.stdout.write(self.style.SUCCESS("Seeds de modules, roles, users y permissions completados."))
