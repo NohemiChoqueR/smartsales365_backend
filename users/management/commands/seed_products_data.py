@@ -10,23 +10,16 @@ from ventas.models import Metodo_pago
 from shipping.models import Agencia
 from sucursales.models import Sucursal, StockSucursal
 
-# --- 1. Definición centralizada de datos (NUEVO) ---
+# --- 1. Definición centralizada de datos ---
 
-# Marcas y sus prefijos para SKU
 MARCAS_DATA = {
-    # Dispositivos Móviles, TVs, Audio
     "Samsung": "SAM", "LG": "LG", "Sony": "SON", "Xiaomi": "XIA", "Apple": "APP",
-    # Laptops y Accesorios
     "HP": "HP", "Dell": "DEL", "Logitech": "LOG", "Razer": "RAZ",
-    # Electrohogar
     "Oster": "OST", "Mabe": "MAB", "Philips": "PHI",
-    # Audio
     "JBL": "JBL", "Bose": "BOS"
 }
 
-# Categorías, Subcategorías y sus prefijos para SKU
 CATEGORIAS_DATA = {
-    # MODIFICADO: "Celulares" ahora es "Dispositivos Móviles"
     "Dispositivos Móviles": {"prefix": "DIS", "subs": ["Smartphones", "Tablets", "Celulares Básicos"]},
     "Laptops":               {"prefix": "LAP", "subs": ["Notebooks", "Ultrabooks", "Gaming Laptops"]},
     "Accesorios":            {"prefix": "ACC", "subs": ["Mouses", "Teclados", "Cases", "Cargadores"]},
@@ -35,7 +28,6 @@ CATEGORIAS_DATA = {
     "Electrohogar":          {"prefix": "ELE", "subs": ["Licuadoras", "Batidoras", "Microondas"]},
 }
 
-# Lógica de asociación: Qué marcas venden qué categorías (NUEVO)
 LOGICA_PRODUCTOS = {
     "Dispositivos Móviles": ["Samsung", "Xiaomi", "Apple", "LG"],
     "Laptops": ["HP", "Dell", "Apple", "Razer", "Samsung"],
@@ -53,43 +45,49 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
         fake = Faker("es_ES")
-        empresas = Empresa.objects.all()
+        
+        # --- Solo se ejecuta para la Empresa 1 ("SmartSales S.R.L.") ---
+        empresas = Empresa.objects.filter(nombre="SmartSales S.R.L.")
+
         if not empresas.exists():
-            self.stdout.write(self.style.ERROR("❌ No hay empresas. Ejecuta primero: python manage.py seed_users_data"))
+            self.stdout.write(self.style.ERROR("❌ No se encontró la empresa 'SmartSales S.R.L.'."))
+            self.stdout.write(self.style.ERROR("   Asegúrate de haberla creado con: python manage.py seed_users_data"))
             return
 
+        # Este bucle 'for' ahora solo se ejecutará una vez
         for empresa in empresas:
             self.stdout.write(self.style.HTTP_INFO(f"\n🏢 Poblando datos para empresa: {empresa.nombre}"))
             
-            # Contadores para SKUs únicos por empresa
             product_counter = 1
             
-            # --- 1. Marcas (MODIFICADO) ---
-            # Crea las marcas desde nuestra data centralizada
-            marcas_creadas = {} # Diccionario para rápido acceso
+            # --- 1. Marcas ---
+            marcas_creadas = {} 
             for nombre_marca in MARCAS_DATA.keys():
                 obj, _ = Marca.objects.get_or_create(nombre=nombre_marca, empresa=empresa, defaults={"esta_activo": True})
                 marcas_creadas[nombre_marca] = obj
-            self.stdout.write(f"  ✓ Marcas creadas/verificadas ({len(marcas_creadas)})")
+            self.stdout.write(f"    ✓ Marcas creadas/verificadas ({len(marcas_creadas)})")
 
-            # --- 2. Categorías y Subcategorías (MODIFICADO) ---
-            subcategorias_creadas = {} # Diccionario para rápido acceso
+            # --- 2. Categorías y Subcategorías ---
+            subcategorias_creadas = {} 
             for cat_nombre, data in CATEGORIAS_DATA.items():
                 c, _ = Categoria.objects.get_or_create(nombre=cat_nombre, empresa=empresa)
                 for sub_nombre in data["subs"]:
                     s, _ = SubCategoria.objects.get_or_create(nombre=sub_nombre, categoria=c, empresa=empresa)
                     subcategorias_creadas[sub_nombre] = s
-            self.stdout.write(f"  ✓ Categorías y Subcategorías creadas/verificadas")
+            self.stdout.write(f"    ✓ Categorías y Subcategorías creadas/verificadas")
 
-            # --- 3. Campañas (MODIFICADO: 2 campañas más) ---
+            # --- 3. Campañas ---
             hoy = datetime.date.today()
-            campanias = [
+            campanias_data = [
                 {"nombre": "Campaña Verano", "desc": "Ofertas de verano", "inicio": hoy, "fin": hoy + datetime.timedelta(days=30)},
                 {"nombre": "Cyber Monday", "desc": "Descuentos Tech", "inicio": hoy + datetime.timedelta(days=40), "fin": hoy + datetime.timedelta(days=47)},
                 {"nombre": "Navidad 2025", "desc": "Especiales de Navidad", "inicio": hoy + datetime.timedelta(days=60), "fin": hoy + datetime.timedelta(days=90)},
             ]
-            for c in campanias:
-                Campania.objects.get_or_create(
+            
+            campanias_creadas = [] 
+            
+            for c in campanias_data:
+                obj, _ = Campania.objects.get_or_create(
                     nombre=c["nombre"],
                     empresa=empresa,
                     defaults={
@@ -98,9 +96,11 @@ class Command(BaseCommand):
                         "fecha_fin": c["fin"],
                     },
                 )
-            self.stdout.write(f"  ✓ Campañas creadas/verificadas ({len(campanias)})")
+                campanias_creadas.append(obj)
+                
+            self.stdout.write(f"    ✓ Campañas creadas/verificadas ({len(campanias_creadas)})")
 
-            # --- 4. Métodos de Pago y Agencias (Sin cambios) ---
+            # --- 4. Métodos de Pago y Agencias ---
             metodos_pago = [
                 {"nombre": "Efectivo", "descripcion": "Pago en efectivo", "proveedor": "Sistema"},
                 {"nombre": "Tarjeta Crédito", "descripcion": "Pago con tarjeta", "proveedor": "Visa/Mastercard"},
@@ -116,12 +116,11 @@ class Command(BaseCommand):
             for ag in agencias:
                 Agencia.objects.get_or_create(nombre=ag["nombre"], empresa=empresa, defaults={**ag, "esta_activo": True})
             
-            # --- 5. Productos y Stock (LÓGICA COMPLETAMENTE NUEVA) ---
-            self.stdout.write("  ⏳ Generando productos con lógica de marcas y SKUs...")
+            # --- 5. Productos y Stock (Sin Imágenes) ---
+            self.stdout.write("    ⏳ Generando productos con lógica de marcas y SKUs...")
             sucursales = Sucursal.objects.filter(empresa=empresa)
             productos_creados_count = 0
 
-            # Iteramos sobre la LÓGICA definida
             for cat_nombre, marcas_permitidas in LOGICA_PRODUCTOS.items():
                 
                 cat_data = CATEGORIAS_DATA[cat_nombre]
@@ -131,23 +130,19 @@ class Command(BaseCommand):
                 if not subcategorias_de_esta_cat:
                     continue
 
-                # Para cada marca permitida en esta categoría...
                 for marca_nombre in marcas_permitidas:
                     marca_obj = marcas_creadas[marca_nombre]
                     marca_sku_prefix = MARCAS_DATA[marca_nombre]
                     
-                    # Creamos 2 o 3 productos de ejemplo para esta combinación
                     for _ in range(random.randint(2, 3)):
                         sub_obj = random.choice(subcategorias_de_esta_cat)
                         
-                        # Generar SKU (MODIFICADO)
-                        sku_num = f"{product_counter:04d}" # Ej: 0001, 0002
-                        sku_final = f"{cat_sku_prefix}-{marca_sku_prefix}-{sku_num}" # Ej: DIS-SAM-0001
+                        sku_num = f"{product_counter:04d}"
+                        sku_final = f"{cat_sku_prefix}-{marca_sku_prefix}-{sku_num}"
                         product_counter += 1
                         
                         nombre_producto = f"{sub_obj.nombre} {marca_obj.nombre} {fake.word().capitalize()}"
                         
-                        # Usamos SKU como clave única, es más robusto
                         p, created = Producto.objects.get_or_create(
                             sku=sku_final,
                             empresa=empresa,
@@ -159,7 +154,7 @@ class Command(BaseCommand):
                             },
                         )
                         
-                        if not created: # Si el SKU ya existía, saltamos
+                        if not created: 
                             continue 
                             
                         productos_creados_count += 1
@@ -169,13 +164,9 @@ class Command(BaseCommand):
                             empresa=empresa,
                             defaults={"potencia": "200W", "voltaje": "220V"},
                         )
-                        ImagenProducto.objects.get_or_create(
-                            producto=p,
-                            empresa=empresa,
-                            defaults={"url": f"https://placehold.co/400x300?text={p.sku.replace(' ', '+')}"}, # Usar SKU en placeholder
-                        )
                         
-                        # Stock para CADA sucursal
+                        # Bloque de ImagenProducto quitado
+                        
                         for sucursal in sucursales:
                             stock_final = random.randint(20, 100)
                             StockSucursal.objects.get_or_create(
@@ -185,22 +176,43 @@ class Command(BaseCommand):
                                 defaults={"stock": stock_final},
                             )
 
-            self.stdout.write(f"  ✓ {productos_creados_count} productos lógicos creados.")
+            self.stdout.write(f"    ✓ {productos_creados_count} productos lógicos creados.")
 
-            # --- 6. Descuentos (Sin cambios) ---
+            # --- 6. Descuentos (CORREGIDO) ---
+            self.stdout.write("    ⏳ Creando descuentos ligados a campañas y productos...")
             productos = list(Producto.objects.filter(empresa=empresa))
-            if productos and sucursales.exists():
-                suc_choice = random.choice(sucursales)
-                for p in random.sample(productos, min(5, len(productos))):
+            
+            if productos and sucursales.exists() and campanias_creadas:
+                
+                # Creamos 5 descuentos aleatorios
+                for _ in range(5):
+                    p = random.choice(productos)
+                    suc_choice = random.choice(sucursales)
+                    campania_choice = random.choice(campanias_creadas)
+                    
+                    # --- INICIO DE CORRECCIÓN ---
+                    # Los campos de la restricción 'uniq' (empresa, producto, sucursal)
+                    # DEBEN ir fuera de 'defaults'.
                     Descuento.objects.get_or_create(
-                        nombre=f"Descuento {p.nombre}",
-                        tipo="PORCENTAJE",
-                        porcentaje=random.randint(5, 15),
-                        producto=p,
-                        sucursal=suc_choice, 
                         empresa=empresa,
-                        defaults={"esta_activo": True},
+                        producto=p,
+                        sucursal=suc_choice,
+                        
+                        # 'defaults' son los valores que se usarán SOLO SI se crea
+                        defaults={
+                            "nombre": f"Desc. {p.nombre[:15]} - {campania_choice.nombre[:10]}",
+                            "tipo": "PORCENTAJE",
+                            "porcentaje": random.randint(5, 15),
+                            "campania": campania_choice,
+                            "esta_activo": True
+                        },
                     )
+                    # --- FIN DE CORRECCIÓN ---
+                    
+                self.stdout.write(f"    ✓ 5 descuentos aleatorios creados/verificados.")
+            else:
+                 self.stdout.write(self.style.WARNING("    ⚠️ No se pudieron crear descuentos (faltan productos, sucursales o campañas)."))
+
 
             self.stdout.write(self.style.SUCCESS(f"✅ Datos creados para empresa {empresa.nombre}"))
         self.stdout.write(self.style.SUCCESS("\n🎯 Seed de products LÓGICO completado ✅"))

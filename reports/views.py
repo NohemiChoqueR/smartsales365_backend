@@ -5,6 +5,7 @@ from rest_framework.generics import ListAPIView
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser
+from django.db.models import Sum, Count
 from django_filters.rest_framework import DjangoFilterBackend
 import json
 from django.db.models import Sum
@@ -65,21 +66,82 @@ class BaseReporteView(ListAPIView):
 
 class ReporteVentasPorProducto(BaseReporteView):
     queryset = Venta.objects.all()
-    filterset_class = ReporteVentaFilter # (Este filtro ya no se usa, pero lo dejamos)
+    filterset_class = ReporteVentaFilter
     
     def get(self, request, *args, **kwargs):
-        formato = request.query_params.get('formato', 'pdf').lower()
+        # 1. Cambiamos default a 'json'
+        formato = request.query_params.get('formato', 'json').lower()
         fecha_inicio, fecha_fin = self.get_fechas(request)
-        return generators.generar_reporte_producto(request, formato, fecha_inicio, fecha_fin)
+
+        if formato in ['excel', 'pdf', 'csv']:
+            return generators.generar_reporte_producto(request, formato, fecha_inicio, fecha_fin)
+
+        base_query = Venta.objects.filter(
+            estado='Completado',
+            empresa=request.user.empresa
+        )
+        ventas_filtradas = base_query.filter(
+            fecha__range=[fecha_inicio, fecha_fin]
+        )
+        if not ventas_filtradas.exists():
+             return Response({"error": "No se encontraron ventas para este rango."}, status=404)
+
+        ventas_ids = ventas_filtradas.values_list('id', flat=True)
+        datos_agregados = DetalleVenta.objects.filter(
+            venta__id__in=ventas_ids
+        ).values(
+            'producto__nombre', 'producto__sku'
+        ).annotate(
+            cantidad_total=Sum('cantidad'),
+            ingresos_totales=Sum('subtotal')
+        ).order_by('-ingresos_totales')
+
+        if not datos_agregados:
+            return Response({"error": "Sin datos de detalle de venta."}, status=404)
+        datos_para_grafico = [
+            {
+                'name': item['producto__nombre'] or 'Sin Producto',
+                'total': item['ingresos_totales'],  
+                'cantidad': item['cantidad_total'], 
+                'sku': item['producto__sku']  
+            }
+            for item in datos_agregados[:10] 
+        ]
+        return Response(datos_para_grafico)
 
 class ReporteVentasPorSucursal(BaseReporteView):
     queryset = Venta.objects.all()
     filterset_class = ReporteVentaFilter
     
     def get(self, request, *args, **kwargs):
-        formato = request.query_params.get('formato', 'excel').lower()
+        formato = request.query_params.get('formato', 'json').lower()
         fecha_inicio, fecha_fin = self.get_fechas(request)
-        return generators.generar_reporte_sucursal(request, formato, fecha_inicio, fecha_fin)
+        if formato == 'excel' or formato == 'pdf' or formato == 'csv':
+            return generators.generar_reporte_sucursal(request, formato, fecha_inicio, fecha_fin)
+
+        base_query = Venta.objects.filter(
+            estado='Completado',
+            empresa=request.user.empresa,
+            fecha__range=[fecha_inicio, fecha_fin]
+        )
+        
+        datos_agregados = base_query.values(
+            'sucursal__nombre'  
+        ).annotate(
+            numero_ventas=Count('id'),
+            ingresos_totales=Sum('total') # Asumo que es 'total', igual que tu generador
+        ).order_by('-ingresos_totales')
+
+        datos_para_grafico = [
+            {
+                'name': item['sucursal__nombre'] or 'Sin Sucursal',
+                'total': item['ingresos_totales'],
+                'cantidad': item['numero_ventas'] # Enviamos también la cantidad
+            }
+            for item in datos_agregados
+        ]
+
+        return Response(datos_para_grafico)
 
 class ReporteVentasPorVendedor(BaseReporteView):
     queryset = Venta.objects.all()

@@ -46,11 +46,18 @@ class Command(BaseCommand):
     def handle(self, *args, **kwargs):
         self.stdout.write(self.style.HTTP_INFO(f"📈 Iniciando seeder de {TOTAL_VENTAS_A_CREAR} ventas para ML..."))
 
-        empresas = Empresa.objects.all()
+        # --- MODIFICACIÓN CLAVE ---
+        # Original: empresas = Empresa.objects.all()
+        # Cambiado para que SOLO se ejecute para la Empresa 1 ("SmartSales S.R.L.")
+        empresas = Empresa.objects.filter(nombre="SmartSales S.R.L.")
+        # --- FIN DE MODIFICACIÓN ---
+        
         if not empresas.exists():
-            self.stdout.write(self.style.ERROR("❌ No se encontraron empresas. No se puede continuar."))
+            self.stdout.write(self.style.ERROR("❌ No se encontró la empresa 'SmartSales S.R.L.'."))
+            self.stdout.write(self.style.ERROR("   Asegúrate de haberla creado con: python manage.py seed_users_data"))
             return
 
+        # Este bucle 'for' ahora solo se ejecutará una vez
         for empresa in empresas:
             self.stdout.write(f"\n🏢 Procesando empresa: {empresa.nombre}")
 
@@ -77,22 +84,24 @@ class Command(BaseCommand):
                            [p.id for p in productos_auriculares]
                 ))
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"  ❌ Error al filtrar productos por categoría. ¿Ejecutaste 'seed_products' actualizado? Error: {e}"))
+                self.stdout.write(self.style.ERROR(f"    ❌ Error al filtrar productos por categoría. ¿Ejecutaste 'seed_products' actualizado? Error: {e}"))
                 continue
 
             # --- 4. Validar que tenemos datos para trabajar ---
             productos_todos = list(Producto.objects.filter(empresa=empresa))
             if not all([productos_todos, sucursales, metodos_pago]):
-                self.stdout.write(self.style.WARNING(f"  ⚠️ Faltan datos (Productos, Sucursales o Métodos de Pago) para '{empresa.nombre}'. Saltando."))
+                self.stdout.write(self.style.WARNING(f"    ⚠️ Faltan datos (Productos, Sucursales o Métodos de Pago) para '{empresa.nombre}'. Saltando."))
                 continue
             
             if not agentes or not clientes:
-                self.stdout.write(self.style.WARNING(f"  ⚠️ No se encontraron 'Agentes' o 'Clientes'. Asignando al azar."))
-                agentes = list(User.objects.filter(empresa=empresa, is_active=True))
-                clientes = agentes
+                self.stdout.write(self.style.WARNING(f"    ⚠️ No se encontraron 'Agentes' o 'Clientes'. Asignando al azar."))
+                # Fallback: si no hay roles, usamos cualquier usuario
+                all_users = list(User.objects.filter(empresa=empresa, is_active=True))
+                agentes = all_users
+                clientes = all_users
             
             if not agentes:
-                self.stdout.write(self.style.ERROR(f"  ❌ No hay ningún usuario activo para '{empresa.nombre}'. Saltando."))
+                self.stdout.write(self.style.ERROR(f"    ❌ No hay ningún usuario activo para '{empresa.nombre}'. Saltando."))
                 continue
 
             # Validar si podemos crear patrones (MODIFICADO)
@@ -100,7 +109,7 @@ class Command(BaseCommand):
             patron_movil_posible = bool(productos_dispositivos and productos_auriculares) # <-- MODIFICADO
             
             if not (patron_laptop_posible or patron_movil_posible):
-                 self.stdout.write(self.style.WARNING(f"  ⚠️ No hay productos para Laptops/Accesorios o Disp.Móviles/Auriculares. Los combos serán aleatorios."))
+                 self.stdout.write(self.style.WARNING(f"    ⚠️ No hay productos para Laptops/Accesorios o Disp.Móviles/Auriculares. Los combos serán aleatorios."))
 
             if not productos_normales:
                 productos_normales = productos_todos 
@@ -112,7 +121,7 @@ class Command(BaseCommand):
             tipos_de_venta = ["COMBO"] * num_combos + ["NORMAL"] * num_normales
             random.shuffle(tipos_de_venta) 
 
-            self.stdout.write(f"  ⏳ Creando {num_normales} ventas normales y {num_combos} ventas combo...")
+            self.stdout.write(f"    ⏳ Creando {num_normales} ventas normales y {num_combos} ventas combo...")
 
             # --- 6. Iniciar la transacción atómica ---
             try:
@@ -127,7 +136,17 @@ class Command(BaseCommand):
                         fecha_venta = timezone.now() - datetime.timedelta(days=dias_aleatorios)
                         fecha_venta = fecha_venta.replace(hour=random.randint(8, 20), minute=random.randint(0, 59))
                         canal_aleatorio = random.choice(["POS", "WEB"])
-                        usuario_aleatorio = random.choice(agentes) if canal_aleatorio == "POS" else random.choice(clientes)
+                        
+                        # MODIFICADO: Asegurarse de que clientes y agentes no estén vacíos
+                        usuario_aleatorio = (
+                            random.choice(agentes) 
+                            if canal_aleatorio == "POS" and agentes 
+                            else random.choice(clientes) if clientes
+                            else None # No debería pasar si la validación anterior funcionó
+                        )
+                        if not usuario_aleatorio:
+                            continue # No se puede crear venta sin usuario
+
                         sucursal_aleatoria = random.choice(sucursales)
                         metodo_aleatorio = random.choice(metodos_pago)
                         
@@ -153,8 +172,8 @@ class Command(BaseCommand):
                                 productos_en_esta_venta.append(prod1)
                                 num_accesorios = random.choices([1, 2], weights=[0.7, 0.3], k=1)[0]
                                 if len(productos_accesorios) >= num_accesorios:
-                                    accesorios = random.sample(productos_accesorios, num_accesorios)
-                                    productos_en_esta_venta.extend(accesorios)
+                                    accesorIOS = random.sample(productos_accesorios, num_accesorios)
+                                    productos_en_esta_venta.extend(accesorIOS)
                                 
                             elif patron_movil_posible: # <-- MODIFICADO
                                 # PATRÓN 2: Dispositivo Móvil + Auriculares
@@ -186,6 +205,8 @@ class Command(BaseCommand):
 
                         # --- 10. Actualizar Venta y Pago ---
                         if total_calculado == 0:
+                            # Si no se añadió ningún producto (raro, pero posible si las listas estaban vacías)
+                            # Borramos la venta y el pago huérfanos
                             if venta.pk: venta.delete()
                             if pago.pk: pago.delete()
                             continue
@@ -196,10 +217,10 @@ class Command(BaseCommand):
                         pago.save()
                         ventas_creadas_count += 1
                     
-                    self.stdout.write(self.style.SUCCESS(f"  ✅ ¡Éxito! Se crearon {ventas_creadas_count} ventas para {empresa.nombre}."))
+                    self.stdout.write(self.style.SUCCESS(f"    ✅ ¡Éxito! Se crearon {ventas_creadas_count} ventas para {empresa.nombre}."))
 
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"  ❌ Error durante la transacción para '{empresa.nombre}': {e}"))
+                self.stdout.write(self.style.ERROR(f"    ❌ Error durante la transacción para '{empresa.nombre}': {e}"))
                 import traceback
                 traceback.print_exc() 
 

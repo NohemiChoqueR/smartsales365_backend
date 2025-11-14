@@ -1,4 +1,3 @@
-# users/management/commands/seed_users_data.py
 from django.core.management.base import BaseCommand
 from users.models import Role, Module, Permission, User
 from tenants.models import Empresa, Plan
@@ -27,10 +26,10 @@ class Command(BaseCommand):
             },
         )
 
-        # ====== EMPRESAS ======
+        # ====== EMPRESAS (MODIFICADO) ======
         empresas = [
             {"nombre": "SmartSales S.R.L.", "nit": "987654321"},
-            {"nombre": "TechWorld S.A.", "nit": "123456789"},
+            # {"nombre": "TechWorld S.A.", "nit": "123456789"}, # <--- Comentado para trabajar solo con la Empresa 1
         ]
         empresas_creadas = []
         for e in empresas:
@@ -43,7 +42,8 @@ class Command(BaseCommand):
 
         # ====== DEPARTAMENTOS PARA TODAS LAS EMPRESAS EXISTENTES ======
         departamentos_data = ["Santa Cruz", "La Paz", "Cochabamba"]
-        empresas_existentes = Empresa.objects.all()
+        # NOTA: Esto ahora solo se ejecutará para las empresas en la lista de arriba (solo 1)
+        empresas_existentes = Empresa.objects.filter(id__in=[e.id for e in empresas_creadas])
 
         # Diccionario para guardar referencias de departamentos por empresa
         departamentos_por_empresa = {}
@@ -59,24 +59,49 @@ class Command(BaseCommand):
                 )
                 departamentos_empresa[depto_nombre] = dep
                 status = self.style.SUCCESS("✅ CREADO") if created else self.style.NOTICE("⚠️ YA EXISTÍA")
-                self.stdout.write(f"  {status} Departamento: {depto_nombre}")
+                self.stdout.write(f"    {status} Departamento: {depto_nombre}")
             
             departamentos_por_empresa[empresa.id] = departamentos_empresa
 
-        # ====== ROLES ======
-        roles_data = [
-            {"name": "SUPER_ADMIN", "description": "Administrador global del sistema"},
+        # ====== ROLES (MODIFICADO) ======
+        self.stdout.write(self.style.MIGRATE_HEADING("--- 🧑‍💼 Creando Roles ---"))
+
+        # 1. Rol SUPER_ADMIN (Global)
+        super_admin_role, _ = Role.objects.get_or_create(
+            name="SUPER_ADMIN", 
+            defaults={"description": "Administrador global del sistema", "empresa": None} 
+        )
+        self.stdout.write(self.style.SUCCESS(f"✅ Rol global asegurado: {super_admin_role.name}"))
+
+        # Diccionario para guardar roles por empresa: roles_por_empresa[empresa_id][role_name]
+        roles_por_empresa = {}
+        
+        roles_data_tenant = [
             {"name": "ADMIN", "description": "Administrador de empresa"},
             {"name": "SALES_AGENT", "description": "Agente de ventas"},
             {"name": "CUSTOMER", "description": "Cliente final"},
         ]
-        roles = {}
-        for r in roles_data:
-            role, _ = Role.objects.get_or_create(name=r["name"], defaults={"description": r["description"]})
-            roles[r["name"]] = role
-            self.stdout.write(self.style.SUCCESS(f"✅ Rol asegurado: {role.name}"))
 
-        # ====== SUPER ADMIN GLOBAL ======
+        # 2. Roles por Empresa (ADMIN, SALES_AGENT, CUSTOMER)
+        # NOTA: Este bucle ahora solo se ejecutará una vez
+        for emp in empresas_creadas:
+            self.stdout.write(f"🧑‍💼 Creando roles para: {emp.nombre}")
+            roles_empresa = {}
+            
+            for r in roles_data_tenant:
+                role, created = Role.objects.get_or_create(
+                    name=r["name"], 
+                    empresa=emp,  
+                    defaults={"description": r["description"]}
+                )
+                roles_empresa[r["name"]] = role
+                status = self.style.SUCCESS("✅ CREADO") if created else self.style.NOTICE("⚠️ YA EXISTÍA")
+                self.stdout.write(f"    {status} Rol: {role.name}")
+            
+            roles_por_empresa[emp.id] = roles_empresa
+
+
+        # ====== SUPER ADMIN GLOBAL (MODIFICADO) ======
         superadmin, created = User.objects.get_or_create(
             email="owner@smartsales365.com",
             defaults={
@@ -86,7 +111,7 @@ class Command(BaseCommand):
                 "is_superuser": True,
                 "is_staff": True,
                 "empresa": None,
-                "role": roles["SUPER_ADMIN"],
+                "role": super_admin_role, 
             },
         )
         if created:
@@ -94,20 +119,24 @@ class Command(BaseCommand):
             superadmin.save()
         self.stdout.write(self.style.SUCCESS("🌍 SUPER ADMIN global listo (owner@smartsales365.com / owner123)"))
 
-        # ====== ADMIN POR EMPRESA ======
+
+        # ====== ADMIN POR EMPRESA (MODIFICADO) ======
         admins = [
             {"email": "admin1@smartsales.com", "empresa": empresas_creadas[0]},
-            {"email": "admin2@techworld.com", "empresa": empresas_creadas[1]},
+            # {"email": "admin2@techworld.com", "empresa": empresas_creadas[1]}, # <--- Comentado
         ]
         for adm in admins:
+            empresa_adm = adm["empresa"]
+            role_admin_tenant = roles_por_empresa[empresa_adm.id]["ADMIN"] 
+            
             user, created = User.objects.get_or_create(
                 email=adm["email"],
                 defaults={
                     "nombre": "Admin",
-                    "apellido": adm["empresa"].nombre,
+                    "apellido": empresa_adm.nombre,
                     "telefono": "70000000",
-                    "empresa": adm["empresa"],
-                    "role": roles["ADMIN"],
+                    "empresa": empresa_adm,
+                    "role": role_admin_tenant, 
                     "is_staff": True,
                 },
             )
@@ -116,73 +145,82 @@ class Command(BaseCommand):
                 user.save()
             self.stdout.write(self.style.SUCCESS(f"👑 Admin listo: {adm['email']} / admin123"))
 
-        # ====== 👥 AGENTES DE VENTA Y 🙍 CLIENTES POR EMPRESA (NUEVO BLOQUE) ======
+
+        # ====== 👥 AGENTES DE VENTA Y 🙍 CLIENTES POR EMPRESA (MODIFICADO) ======
         
         self.stdout.write(self.style.MIGRATE_HEADING("--- 👥 Creando 5 Agentes y 10 Clientes por Empresa ---"))
 
         # --- 1. CREACIÓN DE 5 AGENTES DE VENTA POR EMPRESA ---
         self.stdout.write(self.style.MIGRATE_HEADING("... 👥 Creando Agentes de Venta ..."))
-        if "SALES_AGENT" not in roles:
-            self.stdout.write(self.style.ERROR("El rol 'SALES_AGENT' no se encontró. Saltando creación de agentes."))
-        else:
-            role_agente = roles["SALES_AGENT"]
-            for emp in empresas_creadas:
-                domain_part = emp.nombre.split()[0].lower().replace('.', '').replace(',', '') + ".com"
-                self.stdout.write(f"🏢 Creando 5 agentes para {emp.nombre} (@{domain_part})")
+        
+        # NOTA: Este bucle ahora solo se ejecutará una vez
+        for emp in empresas_creadas:
+            role_agente = roles_por_empresa[emp.id].get("SALES_AGENT")
+            
+            if not role_agente:
+                self.stdout.write(self.style.ERROR(f"El rol 'SALES_AGENT' no se encontró para {emp.nombre}. Saltando."))
+                continue
+
+            domain_part = emp.nombre.split()[0].lower().replace('.', '').replace(',', '') + ".com"
+            self.stdout.write(f"🏢 Creando 5 agentes para {emp.nombre} (@{domain_part})")
+            
+            for i in range(1, 6): # Loop del 1 al 5
+                email = f"agent{i}@{domain_part}"
+                user_agente, created = User.objects.get_or_create(
+                    email=email,
+                    defaults={
+                        "nombre": f"Agente {i}",
+                        "apellido": emp.nombre,
+                        "telefono": f"610000{i:02d}", 
+                        "empresa": emp,
+                        "role": role_agente, 
+                        "is_staff": False,
+                        "status": "ACTIVE",
+                    },
+                )
                 
-                for i in range(1, 6): # Loop del 1 al 5
-                    email = f"agent{i}@{domain_part}"
-                    user_agente, created = User.objects.get_or_create(
-                        email=email,
-                        defaults={
-                            "nombre": f"Agente {i}",
-                            "apellido": emp.nombre,
-                            "telefono": f"610000{i:02d}", # Teléfono ficticio
-                            "empresa": emp,
-                            "role": role_agente,
-                            "is_staff": False,
-                            "status": "ACTIVE",
-                        },
-                    )
-                    
-                    if created:
-                        user_agente.set_password("agent123") # Contraseña genérica
-                        user_agente.save()
-                        self.stdout.write(self.style.SUCCESS(f"  ✅ Creado agente: {email} / agent123"))
-                    else:
-                        self.stdout.write(self.style.NOTICE(f"  ⚠️ Agente ya existía: {email}"))
+                if created:
+                    user_agente.set_password("agent123") 
+                    user_agente.save()
+                    self.stdout.write(self.style.SUCCESS(f"    ✅ Creado agente: {email} / agent123"))
+                else:
+                    self.stdout.write(self.style.NOTICE(f"    ⚠️ Agente ya existía: {email}"))
 
         # --- 2. CREACIÓN DE 10 CLIENTES POR EMPRESA ---
         self.stdout.write(self.style.MIGRATE_HEADING("... 🙍 Creando Clientes ..."))
-        if "CUSTOMER" not in roles:
-            self.stdout.write(self.style.ERROR("El rol 'CUSTOMER' no se encontró. Saltando creación de clientes."))
-        else:
-            role_cliente = roles["CUSTOMER"]
-            for emp in empresas_creadas:
-                domain_part = emp.nombre.split()[0].lower().replace('.', '').replace(',', '') + ".com"
-                self.stdout.write(f"🏢 Creando 10 clientes para {emp.nombre} (@{domain_part})")
+
+        # NOTA: Este bucle ahora solo se ejecutará una vez
+        for emp in empresas_creadas:
+            role_cliente = roles_por_empresa[emp.id].get("CUSTOMER")
+
+            if not role_cliente:
+                self.stdout.write(self.style.ERROR(f"El rol 'CUSTOMER' no se encontró para {emp.nombre}. Saltando."))
+                continue
+
+            domain_part = emp.nombre.split()[0].lower().replace('.', '').replace(',', '') + ".com"
+            self.stdout.write(f"🏢 Creando 10 clientes para {emp.nombre} (@{domain_part})")
+            
+            for i in range(1, 11): # Loop del 1 al 10
+                email = f"customer{i}@{domain_part}"
+                user_cliente, created = User.objects.get_or_create(
+                    email=email,
+                    defaults={
+                        "nombre": f"Cliente {i}",
+                        "apellido": f"Comprador {i}", 
+                        "telefono": f"720000{i:02d}",
+                        "empresa": emp,
+                        "role": role_cliente, 
+                        "is_staff": False,
+                        "status": "ACTIVE",
+                    },
+                )
                 
-                for i in range(1, 11): # Loop del 1 al 10
-                    email = f"customer{i}@{domain_part}"
-                    user_cliente, created = User.objects.get_or_create(
-                        email=email,
-                        defaults={
-                            "nombre": f"Cliente {i}",
-                            "apellido": f"Comprador {i}", # Apellido genérico para cliente
-                            "telefono": f"720000{i:02d}", # Otro rango de teléfono ficticio
-                            "empresa": emp,
-                            "role": role_cliente,
-                            "is_staff": False,
-                            "status": "ACTIVE",
-                        },
-                    )
-                    
-                    if created:
-                        user_cliente.set_password("customer123") # Contraseña diferente
-                        user_cliente.save()
-                        self.stdout.write(self.style.SUCCESS(f"  ✅ Creado cliente: {email} / customer123"))
-                    else:
-                        self.stdout.write(self.style.NOTICE(f"  ⚠️ Cliente ya existía: {email}"))  
+                if created:
+                    user_cliente.set_password("customer123") 
+                    user_cliente.save()
+                    self.stdout.write(self.style.SUCCESS(f"    ✅ Creado cliente: {email} / customer123"))
+                else:
+                    self.stdout.write(self.style.NOTICE(f"    ⚠️ Cliente ya existía: {email}"))    
 
         # ====== MÓDULOS ======
         modules_data = [
@@ -221,21 +259,39 @@ class Command(BaseCommand):
             mod, _ = Module.objects.get_or_create(name=m["name"], defaults={"description": m["description"]})
             modules[m["name"]] = mod
 
-        # ====== PERMISOS ======
-        for role_name, full_access in {"SUPER_ADMIN": True, "ADMIN": True}.items():
+        # ====== PERMISOS (MODIFICADO) ======
+        self.stdout.write(self.style.MIGRATE_HEADING("--- 🔐 Asignando Permisos ---"))
+
+        # 1. Permisos para SUPER_ADMIN (Global)
+        self.stdout.write(f"🔐 Asignando permisos globales para: {super_admin_role.name}")
+        for mod in modules.values():
+            Permission.objects.get_or_create(
+                role=super_admin_role,
+                module=mod,
+                empresa=None, 
+                defaults={
+                    "can_view": 1, "can_create": 1, "can_update": 1, "can_delete": 1,
+                },
+            )
+
+        # 2. Permisos para ADMIN (por Empresa)
+        # NOTA: Este bucle ahora solo se ejecutará una vez
+        for emp in empresas_creadas:
+            role_admin_tenant = roles_por_empresa[emp.id]["ADMIN"] 
+            self.stdout.write(f"🔐 Asignando permisos para ADMIN de: {emp.nombre}")
+            
             for mod in modules.values():
                 Permission.objects.get_or_create(
-                    role=roles[role_name],
+                    role=role_admin_tenant,
                     module=mod,
+                    empresa=emp, 
                     defaults={
-                        "can_view": 1,
-                        "can_create": int(full_access),
-                        "can_update": int(full_access),
-                        "can_delete": int(full_access),
+                        "can_view": 1, "can_create": 1, "can_update": 1, "can_delete": 1,
                     },
                 )
-
+        
         # ====== SUCURSALES POR EMPRESA ======
+        # NOTA: Este bucle ahora solo se ejecutará una vez
         for emp in empresas_creadas:
             depto_santa_cruz = departamentos_por_empresa[emp.id]["Santa Cruz"]
             depto_la_paz = departamentos_por_empresa[emp.id]["La Paz"]

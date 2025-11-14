@@ -102,3 +102,11 @@ git push origin rama/nombre-descriptivo
 - Git status para ver que se está subiendo
 - Mantener consistencia con las convenciones de código del proyecto.
 
+
+from ventas.models import Venta, DetalleVenta, Pago
+Venta.objects.all().delete()
+DetalleVenta.objects.all().delete()
+Pago.objects.all().delete()
+print("✅ Todo borrado")
+
+[text](bitacora) [text](cart) [text](ml_models) [text](notifications) [text](predictions) [text](products) [text](reports) [text](shipping) [text](smartsales) [text](sucursales) [text](tenants) [text](users) [text](utils) [text](ventas) [text](venv) [text](.env) [text](.gitignore) [text](manage.py) [text](README.md) [text](requirements.txt) [text](train_models.py)

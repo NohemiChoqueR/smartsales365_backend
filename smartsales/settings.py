@@ -39,9 +39,9 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
+    "django_filters",
     "corsheaders",
     "drf_yasg",
-    'channels',
     # Local apps (usa la ruta relativa)
     "users",
     "sucursales",
@@ -53,8 +53,9 @@ INSTALLED_APPS = [
     "notifications",
     "bitacora",
     "tenants",
+    "predictions",
     #'sales',
-    #'reports',
+    "reports",
     #'ai',
 ]
 
@@ -89,7 +90,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "smartsales.wsgi.application"
 ASGI_APPLICATION = 'smartsales.asgi.application'
-
 CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
