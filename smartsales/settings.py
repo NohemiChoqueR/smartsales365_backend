@@ -23,10 +23,14 @@ ONESIGNAL_APP_ID = config('ONESIGNAL_APP_ID')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = config("SECRET_KEY")
-DEBUG = config("DEBUG", default=False, cast=bool)
+# DEBUG = config("DEBUG", default=False, cast=bool)
+DEBUG = False
+
 # ALLOWED_HOSTS = config("ALLOWED_HOSTS", default="localhost,127.0.0.1", cast=Csv())
-ALLOWED_HOSTS = ['*', '10.0.2.2', 'localhost', '192.168.0.10']
+# ALLOWED_HOSTS = ['*', '10.0.2.2', 'localhost', '192.168.0.10']
 # Apps
+ALLOWED_HOSTS = ['*']
+
 INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -39,9 +43,9 @@ INSTALLED_APPS = [
     "rest_framework_simplejwt.token_blacklist",
     "rest_framework.authtoken",
     "rest_framework_simplejwt",
-    "django_filters",
     "corsheaders",
     "drf_yasg",
+    'channels',
     # Local apps (usa la ruta relativa)
     "users",
     "sucursales",
@@ -53,9 +57,8 @@ INSTALLED_APPS = [
     "notifications",
     "bitacora",
     "tenants",
-    "predictions",
     #'sales',
-    "reports",
+    'reportes',
     #'ai',
 ]
 
@@ -90,13 +93,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "smartsales.wsgi.application"
 ASGI_APPLICATION = 'smartsales.asgi.application'
+
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
+#         'CONFIG': {
+#             "hosts": [('127.0.0.1', 6379)],
+#         },
+#     },
+# }
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [('127.0.0.1', 6379)],
-        },
-    },
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
 }
 
 # DATABASE: prefer DATABASE_URL, fallback to individual env vars
@@ -164,9 +173,18 @@ SIMPLE_JWT = {
 }
 
 # CORS
-CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", cast=Csv(), default="")
+# CORS_ALLOWED_ORIGINS = config("CORS_ALLOWED_ORIGINS", cast=Csv(), default="")
 CORS_ALLOW_CREDENTIALS = True
-CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", cast=Csv(), default="")
+# CSRF_TRUSTED_ORIGINS = config("CSRF_TRUSTED_ORIGINS", cast=Csv(), default="")
+CORS_ALLOWED_ORIGINS = [
+    "https://tu-frontend.onrender.com",
+    "http://localhost:5173",   # para pruebas locales
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://tu-backend.onrender.com",
+    "https://tu-frontend.onrender.com",
+]
 
 # SWAGGER
 SWAGGER_SETTINGS = {

@@ -57,6 +57,9 @@ urlpatterns = [
     path("api/", include('cart.urls')),
     path("api/", include('notifications.urls')),
     path("api/predict/", include('predictions.urls')),
+    path("api/prediccion/", include("prediccion.urls")),
+    
+    path("api/reportes/", include("reportes.urls")),
     path("api/reports/", include('reports.urls')),
     # swagger / redoc
     path(r'swagger(<format>\.json|\.yaml)', schema_view.without_ui(cache_timeout=0), name='schema-json'),

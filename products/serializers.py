@@ -44,11 +44,11 @@ class SubCategoriaSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("La subcategoría debe pertenecer a la misma empresa que la categoría.")
         return data
         
-    def to_representation(self, instance):
+    # def to_representation(self, instance):
 
-        representation = super().to_representation(instance)
-        representation['categoria'] = instance.categoria.nombre
-        return representation
+    #     representation = super().to_representation(instance)
+    #     representation['categoria'] = instance.categoria.nombre
+    #     return representation
 
 
 class CategoriaSerializer(serializers.ModelSerializer): # <-- MODIFICADO

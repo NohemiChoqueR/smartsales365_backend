@@ -163,10 +163,47 @@ class VentaViewSet(SoftDeleteViewSet):
 # ---------------------------------------------------------------------
 # 🔹 ViewSet: Detalles de Venta
 # ---------------------------------------------------------------------
+# ventas/views.py
 class DetalleVentaViewSet(SoftDeleteViewSet):
     queryset = DetalleVenta.objects.all().order_by("venta__id")
     serializer_class = DetalleVentaSerializer
     module_name = "DetalleVenta"
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+
+        request = self.request
+        user = request.user
+        empresa = getattr(user, "empresa", None)
+
+        # Siempre filtrar por empresa y ventas entregadas
+        if empresa:
+            qs = qs.filter(
+                empresa=empresa,
+                venta__empresa=empresa,
+                venta__estado="entregado",
+            )
+
+        # Query params
+        fecha_inicio = request.query_params.get("fecha_inicio")
+        fecha_fin = request.query_params.get("fecha_fin")
+        producto_id = request.query_params.get("producto") or request.query_params.get("producto_id")
+        categoria_id = request.query_params.get("categoria") or request.query_params.get("categoria_id")
+
+        if fecha_inicio:
+            qs = qs.filter(venta__fecha__date__gte=fecha_inicio)
+        if fecha_fin:
+            qs = qs.filter(venta__fecha__date__lte=fecha_fin)
+
+        if producto_id:
+            qs = qs.filter(producto_id=producto_id)
+
+        if categoria_id:
+            qs = qs.filter(producto__subcategoria__categoria_id=categoria_id)
+
+        return qs.order_by("venta__fecha")
+
+
 
 class CrearStripePaymentIntentView(APIView):
 

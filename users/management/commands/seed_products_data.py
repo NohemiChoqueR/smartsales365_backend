@@ -1,3 +1,4 @@
+# users/management/commands/seed_products_data.py
 import random, datetime
 from django.core.management.base import BaseCommand
 from faker import Faker

@@ -1,3 +1,4 @@
+# users/management/commands/seed_users_data.py
 from django.core.management.base import BaseCommand
 from users.models import Role, Module, Permission, User
 from tenants.models import Empresa, Plan

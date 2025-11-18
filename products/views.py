@@ -85,27 +85,50 @@ class ProductoViewSet(SoftDeleteViewSet):
     queryset = Producto.objects.all().order_by('nombre')
     serializer_class = ProductoSerializer
     module_name = "Producto"
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['subcategoria__categoria', 'nombre', 'precio_venta', 'subcategoria','marca']    
-    permission_classes = [AllowAny] 
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
-        queryset = Producto.objects.all() # Correcto
+        # Empresa actual
         if self.request.user and self.request.user.is_authenticated:
-            return queryset.filter(empresa=self.request.user.empresa, esta_activo=True)
-        return queryset.filter(empresa_id=1, esta_activo=True) # Correcto
+            qs = Producto.objects.filter(
+                empresa=self.request.user.empresa,
+                esta_activo=True
+            )
+        else:
+            qs = Producto.objects.filter(
+                empresa_id=1,
+                esta_activo=True
+            )
 
+        # ================================
+        # 🔥 FILTRO POR CATEGORIA (NIVEL 1)
+        # ================================
+        categoria = self.request.query_params.get("categoria")
+        if categoria:
+            qs = qs.filter(subcategoria__categoria_id=categoria)
 
-    @action(detail=False, methods=["get"], url_path="nuevos")
-    def obtener_productos_nuevos(self, request):
-        """
-        Endpoint para obtener los últimos 10 productos creados.
-        """
-        fecha_limite = timezone.now() - timedelta(days=30)  # Puede ajustarse el tiempo
-        productos_nuevos = Producto.objects.filter(fecha_creacion__gte=fecha_limite).order_by('-fecha_creacion')[:10]
+        # ================================
+        # 🔥 FILTRO POR SUBCATEGORIA (NIVEL 2)
+        # ================================
+        subcategoria = self.request.query_params.get("subcategoria")
+        if subcategoria:
+            qs = qs.filter(subcategoria_id=subcategoria)
 
-        serializer = ProductoSerializer(productos_nuevos, many=True)
-        return Response(serializer.data)
+        # ================================
+        # 🔥 FILTRO POR MARCA
+        # ================================
+        marca = self.request.query_params.get("marca")
+        if marca:
+            qs = qs.filter(marca_id=marca)
+
+        # ================================
+        # 🔥 FILTRO POR NOMBRE
+        # ================================
+        nombre = self.request.query_params.get("nombre")
+        if nombre:
+            qs = qs.filter(nombre__icontains=nombre)
+
+        return qs.order_by("nombre")
 
 class DetalleProductoViewSet(SoftDeleteViewSet):
     queryset = DetalleProducto.objects.all()
