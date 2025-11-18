@@ -196,12 +196,12 @@ CORS_ALLOW_CREDENTIALS = True
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
-    "https://tu-frontend.onrender.com",
+    "https://smartsales365-front.onrender.com",
 ]
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://tu-backend.onrender.com",
-    "https://tu-frontend.onrender.com",
+    "https://smartsales365-backend-3axi.onrender.com",
+    "https://smartsales365-front.onrender.com",
 ]
 
 # ============================================================
