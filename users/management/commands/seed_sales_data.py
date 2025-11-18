@@ -5,12 +5,14 @@ from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 from datetime import datetime, timedelta
+from django.utils.timezone import make_aware
+
 from tenants.models import Empresa
 from users.models import User
 from products.models import Producto
 from sucursales.models import Sucursal, StockSucursal
 from ventas.models import Metodo_pago, Pago, Venta, DetalleVenta
-from shipping.models import Agencia, Envio
+from shipping.models import Agencia
 
 
 class Command(BaseCommand):
@@ -18,8 +20,10 @@ class Command(BaseCommand):
 
     def handle(self, *args, **kwargs):
 
-        # Rango grande de fechas: Enero 2024 → hoy
-        fecha_inicio_global = datetime(2024, 1, 1)
+        # ==========================
+        # 🔧 CORRECCIÓN DE TIMEZONE
+        # ==========================
+        fecha_inicio_global = make_aware(datetime(2024, 1, 1))
         fecha_fin_global = timezone.now()
 
         empresas = Empresa.objects.all()
@@ -64,7 +68,6 @@ class Command(BaseCommand):
             usuarios = list(User.objects.filter(empresa=empresa))
             sucursales = list(Sucursal.objects.filter(empresa=empresa))
             metodos = list(Metodo_pago.objects.filter(empresa=empresa))
-            agencias_empresa = list(Agencia.objects.filter(empresa=empresa))
             productos = list(Producto.objects.filter(empresa=empresa))
 
             if not usuarios or not sucursales or not productos:
@@ -81,7 +84,6 @@ class Command(BaseCommand):
             # 🔥 5. Generar ventas MES A MES desde 2024 → hoy
             # ----------------------------------------------------
             fecha_cursor = fecha_inicio_global
-
             total_ventas = 0
 
             while fecha_cursor <= fecha_fin_global:
@@ -105,9 +107,13 @@ class Command(BaseCommand):
 
                         with transaction.atomic():
 
-                            # Fecha aleatoria dentro del mes
+                            # 🎯 Fecha aleatoria dentro del mes
                             dia = random.randint(1, 28)
                             fecha_venta = fecha_cursor.replace(day=dia)
+
+                            # 🔧 Asegurar timezone-aware
+                            if timezone.is_naive(fecha_venta):
+                                fecha_venta = make_aware(fecha_venta)
 
                             ultimo_numero += 1
                             numero_nota = f"NV-{ultimo_numero:05d}"
@@ -169,6 +175,7 @@ class Command(BaseCommand):
                                 stock_item.stock -= cantidad
                                 stock_item.save()
 
+                            # Si no tuvo detalles, eliminar venta
                             if total_venta == 0:
                                 venta.delete()
                                 pago.delete()
