@@ -5,6 +5,7 @@ import datetime
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from django.utils.timezone import make_aware
 
 from tenants.models import Empresa
 from users.models import User
@@ -33,8 +34,8 @@ class Command(BaseCommand):
                 continue
 
             # 🔵 CONFIGURACIÓN DEL SEED
-            DIAS_HISTORICOS = 180     # 6 meses hacia atrás
-            VENTAS_POR_DIA = (1, 4)   # entre 1 y 4 ventas por día
+            DIAS_HISTORICOS = 180     # 6 meses atrás
+            VENTAS_POR_DIA = (1, 4)
             DETALLES_POR_VENTA = (1, 3)
 
             # Para mantener correlatividad
@@ -42,7 +43,15 @@ class Command(BaseCommand):
 
             # Iniciar generación
             for dias_atras in range(DIAS_HISTORICOS, 0, -1):
+
+                # ==========================
+                # 🔧 CORRECCIÓN TIMEZONE
+                # ==========================
                 fecha_venta = timezone.now() - datetime.timedelta(days=dias_atras)
+
+                # Garantizar datetime aware siempre
+                if timezone.is_naive(fecha_venta):
+                    fecha_venta = make_aware(fecha_venta)
 
                 ventas_hoy = random.randint(*VENTAS_POR_DIA)
 
@@ -66,7 +75,7 @@ class Command(BaseCommand):
                             referencia=f"PAY-{empresa.id}-{numero_nota}",
                         )
 
-                        # Crear Venta con fecha específica
+                        # Crear Venta
                         venta = Venta.objects.create(
                             empresa=empresa,
                             numero_nota=numero_nota,
@@ -76,21 +85,20 @@ class Command(BaseCommand):
                             pago=pago,
                             fecha=fecha_venta,
                             total=0,
-                            estado="entregado",   # ES CRÍTICO PARA ANALÍTICA
+                            estado="entregado",
                         )
 
                         total_venta = 0
                         detalles_count = random.randint(*DETALLES_POR_VENTA)
 
-                        # 🔥 PREVENIR DUPLICADOS
                         productos_usados = set()
 
                         for _ in range(detalles_count):
 
-                            # Elegir producto evitando duplicados
                             producto = random.choice(productos)
-                            intentos = 0
 
+                            # Prevenir duplicados
+                            intentos = 0
                             while producto.id in productos_usados and intentos < 5:
                                 producto = random.choice(productos)
                                 intentos += 1
@@ -100,7 +108,7 @@ class Command(BaseCommand):
 
                             productos_usados.add(producto.id)
 
-                            # Intentar obtener stock en la sucursal
+                            # Obtener stock
                             try:
                                 stock_item = StockSucursal.objects.get(
                                     empresa=empresa,
@@ -118,7 +126,6 @@ class Command(BaseCommand):
                             subtotal = precio_unitario * cantidad
                             total_venta += subtotal
 
-                            # Crear DetalleVenta
                             DetalleVenta.objects.create(
                                 empresa=empresa,
                                 venta=venta,
@@ -128,24 +135,23 @@ class Command(BaseCommand):
                                 subtotal=subtotal,
                             )
 
-                            # Actualizar stock
                             stock_item.stock -= cantidad
                             stock_item.save()
 
-                        # Si no se pudieron crear detalles, descartar venta
+                        # Si no se agregaron detalles, eliminar venta
                         if total_venta == 0:
                             venta.delete()
                             pago.delete()
                             venta_counter -= 1
                             continue
 
-                        # Guardar totales finales
+                        # Guardar totales
                         venta.total = total_venta
                         venta.save()
                         pago.monto = total_venta
                         pago.save()
 
-                # Mostrar progreso cada 20 días
+                # Mostrar progreso
                 if dias_atras % 20 == 0:
                     self.stdout.write(f"⏳ Progreso: faltan {dias_atras} días...")
 
